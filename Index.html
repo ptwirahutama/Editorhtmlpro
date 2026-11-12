@@ -362,6 +362,8 @@ mark.cur{background:var(--hl-cur); box-shadow:0 0 0 2px var(--hl-cur-edge)}
           <button class="btn mini" id="pvTab" type="button" aria-pressed="false">Tablet</button>
           <button class="btn mini" id="pvFull" type="button" aria-pressed="true">Penuh</button>
           <button class="btn mini" id="pvJs" type="button" aria-pressed="false">Script hidup</button>
+          <button class="btn mini" id="pvSkip" type="button" aria-pressed="false">Lewati login</button>
+          <input class="field grow" id="pvSel" type="text" placeholder="Selector login, mis. #login" aria-label="Selector layar login" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" hidden>
           <button class="btn mini" id="pvRefresh" type="button">Segarkan</button>
         </div>
         <div class="prev-wrap" id="pvWrap"></div>
@@ -1610,7 +1612,7 @@ $('explainStop').addEventListener('click',function(){ if(askCtl) askCtl.abort();
 $('explainX').addEventListener('click',function(){ if(askCtl) askCtl.abort(); $('explain').hidden=true; });
 
 /* ---------- preview ---------- */
-var pv={w:'full',js:false,t:0,note:0};
+var pv={w:'full',js:false,skip:false,t:0,note:0};
 var PV_W={phone:'390px',tab:'768px',full:'100%'};
 function setPvW(w){
   pv.w=w;
@@ -1624,6 +1626,25 @@ $('pvJs').addEventListener('click',function(){
   pv.js=!pv.js; this.setAttribute('aria-pressed',pv.js?'true':'false'); refreshPreview(true);
 });
 $('pvRefresh').addEventListener('click',function(){ refreshPreview(true); });
+/* "Lewati login": hide the login screen in the preview only; the code is never changed */
+function loginSelectors(doc){
+  var out=[], seen={}, re=/\b(id|class)\s*=\s*["']([^"']+)["']/gi, m;
+  while((m=re.exec(doc))!==null){
+    var kind=m[1].toLowerCase()==='id' ? '#' : '.';
+    m[2].split(/\s+/).forEach(function(n){
+      if(!/^[A-Za-z_][\w-]*$/.test(n)) return;
+      if(!/login|signin|sign-in|masuk|auth|lockscreen/i.test(n)) return;
+      if(/btn|button|input|label|error|msg|text|title|link|field|logout|keluar/i.test(n)) return;
+      if(!seen[kind+n]){ seen[kind+n]=1; out.push(kind+n); }
+    });
+  }
+  return out.slice(0,12);
+}
+$('pvSkip').addEventListener('click',function(){
+  pv.skip=!pv.skip; this.setAttribute('aria-pressed',pv.skip?'true':'false');
+  $('pvSel').hidden=!pv.skip; refreshPreview(true);
+});
+$('pvSel').addEventListener('input',function(){ refreshPreview(false); });
 function refreshPreview(force){
   var wrap=$('pvWrap'), note=$('pvNote'), text=ta.value;
   clearTimeout(pv.t); clearTimeout(pv.note);
@@ -1644,7 +1665,16 @@ function refreshPreview(force){
   f.setAttribute('sandbox', pv.js ? 'allow-scripts allow-popups' : 'allow-popups');
   f.style.width=PV_W[pv.w];
   var loaded=false;
-  f.addEventListener('load',function(){ loaded=true; note.textContent=pv.js?'Script berjalan di dalam kotak terisolasi.':'Script dimatikan. Ketuk Script hidup untuk menjalankannya.'; });
+  f.addEventListener('load',function(){ loaded=true; note.textContent=(pv.js?'Script berjalan di dalam kotak terisolasi.':'Script dimatikan. Ketuk Script hidup untuk menjalankannya.')+skipNote; });
+  var skipNote='';
+  if(pv.skip){
+    var hid=loginSelectors(doc), manual=$('pvSel').value.replace(/[{};<]/g,'').trim();
+    if(manual) hid.push(manual);
+    if(hid.length){
+      doc+='<style>'+hid.map(function(s){ return s+'{display:none!important}'; }).join('')+'</style>';
+      skipNote=' Layar login disembunyikan: '+hid.join(', ')+'.';
+    } else skipNote=' Layar login tidak dikenali. Tulis selector-nya di kolom, mis. #login.';
+  }
   f.srcdoc=doc;
   wrap.appendChild(f);
   note.textContent='Memuat…';
